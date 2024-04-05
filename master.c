@@ -10,6 +10,7 @@
 #include <string.h>
 #include <limits.h>
 #include <time.h>
+#include <signal.h>
 
 #define PROB 0.1
 
