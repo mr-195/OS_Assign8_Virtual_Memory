@@ -35,7 +35,7 @@ typedef struct SM1
     int pid;         // process id
     int mi;          // number of required pages
     int fi;          // number of frames allocated
-    int **pagetable; // page table
+    int pagetable[10][10]; // page table
     int totalpagefaults;
     int totalillegalaccess;
 } SM1;
@@ -62,11 +62,6 @@ int main()
 
     for (int i = 0; i < k; i++)
     {
-        sm1[i].pagetable = (int **)malloc(m * sizeof(int *));
-        for (int j = 0; j < m; j++)
-        {
-            sm1[i].pagetable[j] = (int *)malloc(3 * sizeof(int));
-        }
         sm1[i].totalpagefaults = 0;
         sm1[i].totalillegalaccess = 0;
     }
