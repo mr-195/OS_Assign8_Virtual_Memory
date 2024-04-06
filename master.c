@@ -247,7 +247,8 @@ void createProcesses()
 	int rlen;
 	int generated;
 	int n,r;
-	char ref[1000];
+	char ref[100000];
+	memset(ref,0,sizeof(ref));
 	int index=0;
 	for(i=0;i<k;i++)
 	{

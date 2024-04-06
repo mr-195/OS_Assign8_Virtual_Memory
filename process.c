@@ -1,12 +1,16 @@
-#include <bits/stdc++.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <sys/msg.h>
+#include <stdbool.h>
 #include <signal.h>
+#include <sys/msg.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
 #include <sys/shm.h>
+#include <string.h>
+#include <time.h>
 
-using namespace std;
+// using namespace std;
 
 #define PROCESS_OVER -9
 #define TO_SCHEDULER 10
@@ -16,18 +20,20 @@ using namespace std;
 #define PAGE_FAULT -1
 #define INVALID_PAGE_REFERENCE -2
 
-vector<int> pages;
+int len = 0;
+// vector<int> pages;
+int pages[100];
 
-struct MQ3_sendbuf{			//Send msg to MMU via MQ3
+typedef struct MQ3_sendbuf{			//Send msg to MMU via MQ3
 	long mtype;         	
 	int id;
 	int pageno;
-};
+}MQ3_sendbuf;
 
-struct MQ3_recvbuf{			//Receive msg from MMU via MQ3
+typedef struct MQ3_recvbuf{			//Receive msg from MMU via MQ3
 	long mtype;          
 	int frameno;
-};
+}MQ3_recvbuf;
 
 struct MQ1buf{				//Send/recv msg to scheduler via MQ1
 	long mtype;         
@@ -40,14 +46,15 @@ void conv_ref_pages(char *ref)			//Get the page numbers to be accessed from the 
 	token=strtok(ref,"  ");
 	while(token!=NULL)
 	{
-		pages.push_back(atoi(token));		//Split by "  "
+		// pages.push_back(atoi(token));		//Split by "  "
+		pages[len++] = atoi(token); 
 		token=strtok(NULL,"  ");
 	}
 }
 
 int main(int argc, char *argv[])
 {
-	if (argc<5)
+	if (argc<4)
 	{
 		perror("Invalid Number of Arguments\n");		//Invalid number of args
 		exit(1);
@@ -60,7 +67,8 @@ int main(int argc, char *argv[])
 	MQ3id = atoi(argv[3]);
 	conv_ref_pages(argv[4]);
 	
-	cout<<"Process id = "<<pid<<endl;		//Process id
+	// cout<<"Process id = "<<pid<<endl;		//Process id
+	printf("Process id = %d\n",pid);
 
 	struct MQ1buf msg_to_scheduler;
 	msg_to_scheduler.mtype=TO_SCHEDULER;
@@ -84,9 +92,11 @@ int main(int argc, char *argv[])
 	MQ3_sendbuf msg_to_mmu;
 	MQ3_recvbuf msg_from_mmu;
 
-	for(i=0;i<pages.size();)
+	// for(i=0;i<pages.size();i++)
+	for(i=0;i<len;i++)
 	{
-		cout<<"Sending request for Page "<<pages[i]<<".\n";			//Send request for a page to mmu
+		// cout<<"Sending request for Page "<<pages[i]<<".\n";			//Send request for a page to mmu
+		printf("Sending request for Page %d.\n",pages[i]);
 		msg_to_mmu.mtype=TO_MMU;
 		msg_to_mmu.id=pid;
 		msg_to_mmu.pageno=pages[i];
@@ -106,12 +116,14 @@ int main(int argc, char *argv[])
 
 		if(msg_from_mmu.frameno>=0)					//If frame number is found
 		{
-			cout<<"MMU responded with frame number for process "<<pid<<": "<<msg_from_mmu.frameno<<endl;
+			printf("MMU responded with frame number for process %d: %d\n",pid,msg_from_mmu.frameno);
+			// cout<<"MMU responded with frame number for process "<<pid<<": "<<msg_from_mmu.frameno<<endl;
 			i++;
 		}
 		else if(msg_from_mmu.frameno==PAGE_FAULT) 		//In case of page fault, now wait for scheduler to send a msg to process via MQ1
 		{
-			cout<<"Page Fault detected for process "<<pid<<endl;
+			printf("Page Fault detected for process %d",pid);
+			// cout<<"Page Fault detected for process "<<pid<<endl;
 			length=sizeof(struct MQ1buf)-sizeof(long);
 
 			if (msgrcv(MQ1id,&msg_from_scheduler,length,FROM_SCHEDULER+pid,0)==-1)
@@ -122,12 +134,14 @@ int main(int argc, char *argv[])
 		}
 		else if (msg_from_mmu.frameno==INVALID_PAGE_REFERENCE)		//Invalid page reference: terminate
 		{
-			cout<<"Invalid Page Reference for Process "<<pid<<". Terminating the Process...\n";
+			printf("Invalid Page Reference for Process %d. Terminating the Process...\n",pid);
+			// cout<<"Invalid Page Reference for Process "<<pid<<". Terminating the Process...\n";
 			exit(1);
 		}
 	}
-
-	cout<<"Process "<<pid<<" completed successfully"<<endl;		//Completion of process, send -9 to MMU
+	
+	printf("Process %d completed succcesfully\n",pid);
+	// cout<<"Process "<<pid<<" completed successfully"<<endl;		//Completion of process, send -9 to MMU
 	msg_to_mmu.pageno=PROCESS_OVER;
 	msg_to_mmu.id=pid;
 	msg_to_mmu.mtype=TO_MMU;
