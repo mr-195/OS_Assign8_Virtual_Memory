@@ -1,4 +1,5 @@
-#include <bits/stdc++.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
@@ -7,8 +8,7 @@
 #include <sys/msg.h>
 #include <limits.h>
 #include <sys/shm.h>
-
-using namespace std;
+#include <stdbool.h>
 
 #define FROM_PROCESS 10				//To send a msg to process
 #define TO_PROCESS 20				//To recv a msg from process
@@ -19,7 +19,8 @@ using namespace std;
 #define TERMINATED 2				//Type 2 msg
 
 int timestamp=0;					//Global timestamp
-vector<int> fault_freq;				//Frequency of page faults
+int fault_freq[10000];			//Frequency of page faults
+int fault_freq_index=0;			//Index for the frequency of page faults
 FILE *outfile;
 
 typedef struct{						//Page Table Entry has the Frame number, valid/invalid and time of use (timestamp)
@@ -40,13 +41,13 @@ typedef struct{						//Free Frame List: Stores the size of the list and the free
 	int ffl[];
 }FFL;
 
-typedef struct{						//Translation Lookaside Buffer Stores the id, pageno, frameno, timestamp (for replacing in TLB) and valid (if something exists in TLB or not)
-	int pid;
-	int pageno;
-	int frameno;
-	int time;
-	bool valid;
-}TLB;
+// typedef struct{						//Translation Lookaside Buffer Stores the id, pageno, frameno, timestamp (for replacing in TLB) and valid (if something exists in TLB or not)
+// 	int pid;
+// 	int pageno;
+// 	int frameno;
+// 	int time;
+// 	bool valid;
+// }TLB;
 
 //Message Queue Structures
 
@@ -73,7 +74,7 @@ int PCBid;
 process *PCB;						//Structures
 PTentry *PT;
 FFL *freeFL;
-vector<TLB> tlb;					//TLB
+// vector<TLB> tlb;					//TLB
 
 int m,k,s;
 
@@ -152,44 +153,44 @@ void freeFrames(int id)					//When a process is over/terminated, free all the fr
 	}
 }
 
-void updateTLB(int id,int pageno,int frameno)			//Update the TLB with the given ID, Page no and Frame no
-//HERE AS WE CANNOT HAVE ASSOCIATIVITY BECAUSE C++ PROGRAMMING IS SEQUENTIAL, WE WILL ASSUME THAT ANY LOOPS IN THE FOLLOWING
-//FUNCTION RUN ALL THE LOOP VARIABLE CASES PARALLELLY. THIS IS JUST A SIMULATION OF THE SAME
-{
-	int i;
-	int mintime=INT_MAX,mini;	
-	int found=0;
-	for(i=0;i<s;i++)					//Parallelly go through all the TLB indices
-	{
-		if(tlb[i].valid==false) 		//if the we get an empty place, update it with the current results and break
-		{
-			tlb[i].valid=true;
-			tlb[i].time=timestamp;
-			tlb[i].pid=id;
-			tlb[i].pageno=pageno;
-			tlb[i].frameno=frameno;
-			found=1;
-			break;
-		}
-		else
-		{
-			if(tlb[i].time<mintime)		//otherwise find the min timestamp
-			{
-				mintime=tlb[i].time;
-				mini=i;
-			}
-		}
-	}
+// void updateTLB(int id,int pageno,int frameno)			//Update the TLB with the given ID, Page no and Frame no
+// //HERE AS WE CANNOT HAVE ASSOCIATIVITY BECAUSE C++ PROGRAMMING IS SEQUENTIAL, WE WILL ASSUME THAT ANY LOOPS IN THE FOLLOWING
+// //FUNCTION RUN ALL THE LOOP VARIABLE CASES PARALLELLY. THIS IS JUST A SIMULATION OF THE SAME
+// {
+// 	int i;
+// 	int mintime=INT_MAX,mini;	
+// 	int found=0;
+// 	for(i=0;i<s;i++)					//Parallelly go through all the TLB indices
+// 	{
+// 		if(tlb[i].valid==false) 		//if the we get an empty place, update it with the current results and break
+// 		{
+// 			tlb[i].valid=true;
+// 			tlb[i].time=timestamp;
+// 			tlb[i].pid=id;
+// 			tlb[i].pageno=pageno;
+// 			tlb[i].frameno=frameno;
+// 			found=1;
+// 			break;
+// 		}
+// 		else
+// 		{
+// 			if(tlb[i].time<mintime)		//otherwise find the min timestamp
+// 			{
+// 				mintime=tlb[i].time;
+// 				mini=i;
+// 			}
+// 		}
+// 	}
 
-	if(found==0)						//if we could not find an empty space, change the min timestamp position
-	{
-		tlb[mini].time=timestamp;
-		tlb[mini].pid=id;
-		tlb[mini].pageno=pageno;
-		tlb[mini].frameno=frameno;
-	}
+// 	if(found==0)						//if we could not find an empty space, change the min timestamp position
+// 	{
+// 		tlb[mini].time=timestamp;
+// 		tlb[mini].pid=id;
+// 		tlb[mini].pageno=pageno;
+// 		tlb[mini].frameno=frameno;
+// 	}
 			
-}
+// }
 void serviceMessageRequest()			//Service message requests
 {
 	int id,pageno,length,frameno,i,found;
@@ -213,12 +214,14 @@ void serviceMessageRequest()			//Service message requests
 	}
 
 	timestamp++;								//Increase the timestamp
-	cout<<"Page reference: ("<<timestamp<<", "<<id<<", "<<pageno<<")\n";
+	// printf("Page reference: ("<<timestamp<<", "<<id<<", "<<pageno<<")\n";
+	printf("Page reference: (%d, %d, %d)\n",timestamp,id,pageno);
 	fprintf(outfile,"Page reference: (%d, %d, %d)\n",timestamp,id,pageno);
 
 	if (pageno>PCB[id].m||pageno<0)				//If we refer to an invalid page number
 	{
-		cout<<"Invalid Page Reference: ("<<id<<", "<<pageno<<")\n";
+		// cout<<"Invalid Page Reference: ("<<id<<", "<<pageno<<")\n";
+		printf("Invalid Page Reference: (%d, %d)\n",id,pageno);
 		fprintf(outfile,"Invalid Page Reference: (%d, %d)\n",id,pageno);
 		
 		sendFrameNo(id,INVALID_PAGE_REFERENCE);	//Send invalid reference to process
@@ -229,33 +232,34 @@ void serviceMessageRequest()			//Service message requests
 
 	else 							//if a valid page numeber is used
 	{
-		for(i=0;i<s;i++)			//Go through TLB in SET ASSOCIATIVE manner (here assume it is shown sequentially)
-		{
-			if(tlb[i].valid==true&&tlb[i].pid==id&&tlb[i].pageno==pageno)
-			{
-				tlb[i].time=timestamp;			//if found in TLB
-				cout<<"Found in TLB\n";
-				sendFrameNo(id,tlb[i].frameno);
-				return;
-			}
-		}
+		// for(i=0;i<s;i++)			//Go through TLB in SET ASSOCIATIVE manner (here assume it is shown sequentially)
+		// {
+		// 	if(tlb[i].valid==true&&tlb[i].pid==id&&tlb[i].pageno==pageno)
+		// 	{
+		// 		tlb[i].time=timestamp;			//if found in TLB
+		// 		cout<<"Found in TLB\n";
+		// 		sendFrameNo(id,tlb[i].frameno);
+		// 		return;
+		// 	}
+		// }
 
 		if(PT[id*m+pageno].valid==true)			//if found in page table but not in TLB
 		{
 			frameno=PT[id*m+pageno].frame;
 
-			updateTLB(id,pageno,frameno);		//update TLB and return frame number
+			// updateTLB(id,pageno,frameno);		//update TLB and return frame number
 			sendFrameNo(id,frameno);
 			PT[id*m+pageno].time=timestamp;
 		}
 		else
 		{
-			cout<<"Page Fault: ("<<id<<", "<<pageno<<")\n";
+			// cout<<"Page Fault: ("<<id<<", "<<pageno<<")\n";
+			printf("Page Fault: (%d, %d)\n",id,pageno);
 			fprintf(outfile,"Page Fault: (%d, %d)\n",id,pageno);
 			fault_freq[id]+=1;
 			sendFrameNo(id,PAGE_FAULT);			//otherwise we get a page fault, we handle the page fault, update TLB and PT
 			frameno=handlePageFault(id,pageno);
-			updateTLB(id,pageno,frameno);
+			// updateTLB(id,pageno,frameno);
 			PT[id*m+pageno].valid=true;
 			PT[id*m+pageno].time=timestamp;
 			PT[id*m+pageno].frame=frameno;
@@ -270,13 +274,14 @@ void complete(int signo)			//Signal Handler for SIGUSR1
 	if(signo==SIGUSR2) 
 	{
 
-		cout<<"Frequency of Page Faults for Each Process:\n";	
+		printf("Frequency of Page Faults for Each Process:\n");	
 		fprintf(outfile,"Frequency of Page Faults for Each Process:\n");
-		cout<<"PID\tFrequency\n";
+		printf("PID\tFrequency\n");
 		fprintf(outfile,"PID\tFrequency\n");
 		for(i=0;i<k;i++)
 		{	
-			cout<<i<<"\t"<<fault_freq[i]<<endl;					//Print the frequency of page faults iteratively
+			// cout<<i<<"\t"<<fault_freq[i]<<endl;
+			printf("%d\t%d\n",i,fault_freq[i]);
 			fprintf(outfile,"%d\t%d\n",i,fault_freq[i]);
 		}
 
@@ -309,10 +314,10 @@ int main(int argc, char const *argv[])			//Main Function
 
 	int i;
 	
-	tlb.resize(s);								//Make a TLB of size s with all initial elements as false
-	for(i=0;i<s;i++) tlb[i].valid=false;
+	// tlb.resize(s);								//Make a TLB of size s with all initial elements as false
+	// for(i=0;i<s;i++) tlb[i].valid=false;
 
-	for(i=0;i<k;i++) fault_freq.push_back(0);	//Page faults for all processes initially 0
+	for(i=0;i<k;i++) fault_freq[i]=0;	//Page faults for all processes initially 0
 	
 	PCB=(process *)(shmat(PCBid,NULL,0));		//Attach the various data structures to the shared memory via the id
 	PT=(PTentry *)(shmat(PTid,NULL,0));

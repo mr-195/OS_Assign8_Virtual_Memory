@@ -1,8 +1,8 @@
-all: process.cpp mmu.cpp master.cpp sched.cpp
-	g++ master.cpp -o master -std=c++11
-	g++ sched.cpp -o scheduler -std=c++11
-	g++ mmu.cpp -o mmu -std=c++11
-	g++ process.cpp -o process -std=c++11
+all: process.c mmu.c master.c sched.c
+	g++ master.c -o master
+	gcc sched.c -o scheduler
+	gcc mmu.c -o mmu
+	g++ process.c -o process
 
 clean:
 	rm process master scheduler mmu

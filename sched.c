@@ -1,12 +1,11 @@
-#include <bits/stdc++.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <sys/shm.h>
-
-using namespace std;
 
 #define FROM_PROCESS 10				//Various #defines for msg queues
 #define TO_PROCESS 20  
@@ -29,7 +28,8 @@ int main(int argc , char * argv[])
 {
 	if (argc<5)
 	{
-		cout<<"Invalid Number of Arguments\n";
+		printf("Invalid Number of Arguments\n");
+		printf("Usage: %s <MQ1id> <MQ2id> <k> <master_pid>\n",argv[0]);
 		exit(1);
 	}
 
@@ -89,7 +89,7 @@ int main(int argc , char * argv[])
 		}
 		else
 		{
-			cout<<"Incorrect Message Received\n";
+			printf("Incorrect Message Received\n");
 			exit(1);
 		}
 		if (n_terminated==k) break; //if all processes have terminated, then break
@@ -97,6 +97,6 @@ int main(int argc , char * argv[])
 
 	kill(master_pid,SIGUSR1);	//send signal to Master to terminate all the modules
 	pause();					//wait for signal from Master
-	cout<<"Terminating Scheduler\n";
+	printf("Terminating Scheduler\n");
 	exit(1);
 }

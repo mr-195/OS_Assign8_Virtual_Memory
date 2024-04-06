@@ -1,0 +1,16 @@
+{
+    "files.associations": {
+        "*.cpp": "cpp",
+        "*.cxx": "cpp",
+        "*.c++": "cpp",
+        "*.html": "html",
+        "*.c": "c",
+        "*.tcc": "cpp",
+        "deque": "cpp",
+        "forward_list": "cpp",
+        "list": "cpp",
+        "string": "cpp",
+        "vector": "cpp",
+        "valarray": "cpp"
+    }
+}
