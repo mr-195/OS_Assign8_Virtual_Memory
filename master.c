@@ -1,12 +1,15 @@
-#include <bits/stdc++.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/msg.h>
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <sys/shm.h>
-
-using namespace std;
+#include <string.h>
+#include <time.h>
+#include <stdbool.h>
+// using namespace std;
 
 typedef struct 
 {
@@ -210,7 +213,7 @@ void createProcessBlocks()
 
 	for(i=0;i<k;i++)
 	{
-		cout<<"Process ID = "<<ptr[i].pid<<", Size of Page Table = "<<ptr[i].m<<", Allocated No. of Frames = "<<ptr[i].allocount<<endl;
+		printf("Allocated Frames: %d,Size of Page Table: %d, Allocated No. of frames: %d\n",ptr[i].allocount,ptr[i].m,ptr[i].allocount);						
 	}
 
 	if(shmdt(ptr)==-1)
@@ -219,6 +222,14 @@ void createProcessBlocks()
 		clear_and_exit(1);
 	}
 
+}
+
+void concat(char *a,int b)
+{
+	char buf[10];
+	sprintf(buf,"%d",b);
+	strcat(a,buf);
+	strcat(a,"  ");
 }
 
 void createProcesses()
@@ -236,10 +247,10 @@ void createProcesses()
 	int rlen;
 	int generated;
 	int n,r;
-	string ref;
+	char ref[1000];
+	int index=0;
 	for(i=0;i<k;i++)
 	{
-		ref.clear();
 		seed=time(NULL);
 		rlen=rand()%(8*ptr[i].m+1)+2*ptr[i].m; //length of reference string is between 2m to 10m
 		generated=0;
@@ -257,7 +268,8 @@ void createProcesses()
 				for(j=0;j<n;j++)
 				{
 					r=rand()%ptr[i].m+rand()%n;
-					ref=ref+to_string(r)+"  ";
+					// ref=ref+to_string(r)+"  ";
+					concat(ref,r);
 				}
 				generated+=n;
 			}
@@ -268,13 +280,15 @@ void createProcesses()
 				for(j=0;j<rlen-generated;j++)
 				{
 					r=rand()%ptr[i].m+rand()%(n*2);
-					ref=ref+to_string(r)+"  ";
+					// ref=ref+to_string(r)+"  ";
+					concat(ref,r);
 				}
 				generated=rlen;
 			}
 		}
 
-		cout<<"Reference String: "<<ref<<endl;
+		// cout<<"Reference String: "<<ref<<endl;
+		printf("Reference String: %s\n",ref);
 		if(fork()==0)
 		{
 			char PNo[20],M1[20],M3[20];
@@ -310,7 +324,8 @@ int main(int argc, char const *argv[])
 	signal(SIGINT,clear_and_exit);
 	if(argc < 5)
 	{
-		cout<<"Error: 4 arguments needed: k, m, f, s\n";
+		printf("Error: 4 arguments needed: k, m, f, s\n");
+		// printf("")
 		clear_and_exit(1);
 	}
 
@@ -322,7 +337,8 @@ int main(int argc, char const *argv[])
 
 	if(k<= 0||m<= 0||f<=0||f<k)
 	{
-		cout<<"Input is invalid\n";
+		// cout<<"Input is invalid\n";
+		printf("Inut is invalid\n");
 		clear_and_exit(1);
 	}
 
