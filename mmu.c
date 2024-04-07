@@ -47,14 +47,6 @@ typedef struct
 	int ffl[];
 } FFL;
 
-// typedef struct{						//Translation Lookaside Buffer Stores the id, pageno, frameno, timestamp (for replacing in TLB) and valid (if something exists in TLB or not)
-// 	int pid;
-// 	int pageno;
-// 	int frameno;
-// 	int time;
-// 	bool valid;
-// }TLB;
-
 // Message Queues
 
 struct MQ2_buffer
@@ -83,7 +75,6 @@ int ProcessBlock_ID;
 process *ProcessBlock; // Structures
 PageTableEntry *PageTable;
 FFL *FreeFrameList;
-// vector<TLB> tlb;					//TLB
 
 int m, k, s;
 
@@ -228,16 +219,6 @@ void ServiceMessageRequest() // Service message requests
 	}
 	else
 	{
-		// for(i=0;i<s;i++)			//Go through TLB in SET ASSOCIATIVE manner (here assume it is shown sequentially)
-		// {
-		// 	if(tlb[i].valid==true&&tlb[i].pid==id&&tlb[i].pageno==pageno)
-		// 	{
-		// 		tlb[i].time=timestamp;			//if found in TLB
-		// 		cout<<"Found in TLB\n";
-		// 		SendFrameNumber(id,tlb[i].frameno);
-		// 		return;
-		// 	}
-		// }
 
 		if (PageTable[id * m + pageno].valid == true) // if found in page table but not in TLB
 		{
@@ -264,49 +245,10 @@ void ServiceMessageRequest() // Service message requests
 	}
 }
 
-// void updateTLB(int id,int pageno,int frameno)			//Update the TLB with the given ID, Page no and Frame no
-// //HERE AS WE CANNOT HAVE ASSOCIATIVITY BECAUSE C++ PROGRAMMING IS SEQUENTIAL, WE WILL ASSUME THAT ANY LOOPS IN THE FOLLOWING
-// //FUNCTION RUN ALL THE LOOP VARIABLE CASES PARALLELLY. THIS IS JUST A SIMULATION OF THE SAME
-// {
-// 	int i;
-// 	int mintime=INT_MAX,mini;
-// 	int found=0;
-// 	for(i=0;i<s;i++)					//Parallelly go through all the TLB indices
-// 	{
-// 		if(tlb[i].valid==false) 		//if the we get an empty place, update it with the current results and break
-// 		{
-// 			tlb[i].valid=true;
-// 			tlb[i].time=timestamp;
-// 			tlb[i].pid=id;
-// 			tlb[i].pageno=pageno;
-// 			tlb[i].frameno=frameno;
-// 			found=1;
-// 			break;
-// 		}
-// 		else
-// 		{
-// 			if(tlb[i].time<mintime)		//otherwise find the min timestamp
-// 			{
-// 				mintime=tlb[i].time;
-// 				mini=i;
-// 			}
-// 		}
-// 	}
-
-// 	if(found==0)						//if we could not find an empty space, change the min timestamp position
-// 	{
-// 		tlb[mini].time=timestamp;
-// 		tlb[mini].pid=id;
-// 		tlb[mini].pageno=pageno;
-// 		tlb[mini].frameno=frameno;
-// 	}
-
-// }
-
 int main(int argc, char const *argv[]) // Main Function
 {
 	logfile = open("result.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
-	write(logfile, "MMU Logs\n", 10);
+	write(logfile, "MMU Logs 😃\n", 14);
 	signal(SIGUSR2, done); 
 	signal(SIGUSR2, done); 
 	sleep(1);				   // Induced to show the context switch for better visualisation, otherwise the page access gets completed within 250 ms
