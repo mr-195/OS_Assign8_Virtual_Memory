@@ -11,6 +11,8 @@
         "list": "cpp",
         "string": "cpp",
         "vector": "cpp",
-        "valarray": "cpp"
+        "valarray": "cpp",
+        "cstring": "c",
+        "fcntl.h": "c"
     }
 }
