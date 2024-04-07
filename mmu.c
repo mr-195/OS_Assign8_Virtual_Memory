@@ -78,7 +78,53 @@ FFL *FreeFrameList;
 
 int m, k, s;
 
-void done(int signo) // Signal Handler for SIGUSR1
+void done(int signo);
+int HandlePageFault(int id, int pageno);
+void SendFrameNumber(int id, int frame);
+void SendMessageToScheduler(int type);
+void FreeFrames(int id);
+void ServiceMessageRequest();
+
+int main(int argc, char const *argv[]) // Main Function
+{
+	logfile = open("result.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
+	write(logfile, "MMU Logs 😃\n", 14);
+	signal(SIGUSR2, done); 
+	signal(SIGUSR2, done); 
+	sleep(1);				   // Induced to show the context switch for better visualisation, otherwise the page access gets completed within 250 ms
+	if (argc < 9)
+	{
+		perror("Invalid Number of Arguments\n");
+		exit(1);
+	}
+
+	MQ2 = atoi(argv[1]); // Access Arguments
+	MQ3 = atoi(argv[2]);
+	SM1 = atoi(argv[3]);
+	SM2 = atoi(argv[4]);
+	ProcessBlock_ID = atoi(argv[5]);
+	m = atoi(argv[6]);
+	k = atoi(argv[7]);
+	s = atoi(argv[8]);
+
+	int i;	
+
+	for (i = 0; i < k; i++)
+		fault_frequency[i] = 0; // Page faults for all processes initially 0
+
+	ProcessBlock = (process *)(shmat(ProcessBlock_ID, NULL, 0)); // Attach the various data structures to the shared memory via the id
+	PageTable = (PageTableEntry *)(shmat(SM1, NULL, 0));
+	FreeFrameList = (FFL *)(shmat(SM2, NULL, 0));
+
+	while (1)
+	{
+		ServiceMessageRequest(); // Service the various requests received
+	}
+	return 0;
+}
+
+
+void done(int signo) 
 {
 	int i;
 	if (signo == SIGUSR2)
@@ -104,7 +150,7 @@ void done(int signo) // Signal Handler for SIGUSR1
 	}
 }
 
-int HandlePageFault(int id, int pageno) // handle the page faults
+int HandlePageFault(int id, int pageno)
 {
 	int i, frameno;
 	if (FreeFrameList->size == 0 || ProcessBlock[id].usecount > ProcessBlock[id].allocount) // if there is no free frame or if the page has all its allocated number of frames used
@@ -133,7 +179,7 @@ int HandlePageFault(int id, int pageno) // handle the page faults
 	return frameno;
 }
 
-void SendFrameNumber(int id, int frame) // send frame number to process specified by id
+void SendFrameNumber(int id, int frame)
 {
 	struct MQ3_send_buffer message_to_process;
 	int length;
@@ -245,40 +291,3 @@ void ServiceMessageRequest() // Service message requests
 	}
 }
 
-int main(int argc, char const *argv[]) // Main Function
-{
-	logfile = open("result.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
-	write(logfile, "MMU Logs 😃\n", 14);
-	signal(SIGUSR2, done); 
-	signal(SIGUSR2, done); 
-	sleep(1);				   // Induced to show the context switch for better visualisation, otherwise the page access gets completed within 250 ms
-	if (argc < 9)
-	{
-		perror("Invalid Number of Arguments\n");
-		exit(1);
-	}
-
-	MQ2 = atoi(argv[1]); // Access Arguments
-	MQ3 = atoi(argv[2]);
-	SM1 = atoi(argv[3]);
-	SM2 = atoi(argv[4]);
-	ProcessBlock_ID = atoi(argv[5]);
-	m = atoi(argv[6]);
-	k = atoi(argv[7]);
-	s = atoi(argv[8]);
-
-	int i;	
-
-	for (i = 0; i < k; i++)
-		fault_frequency[i] = 0; // Page faults for all processes initially 0
-
-	ProcessBlock = (process *)(shmat(ProcessBlock_ID, NULL, 0)); // Attach the various data structures to the shared memory via the id
-	PageTable = (PageTableEntry *)(shmat(SM1, NULL, 0));
-	FreeFrameList = (FFL *)(shmat(SM2, NULL, 0));
-
-	while (1)
-	{
-		ServiceMessageRequest(); // Service the various requests received
-	}
-	return 0;
-}

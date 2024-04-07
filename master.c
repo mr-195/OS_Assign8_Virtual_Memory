@@ -38,6 +38,79 @@ int ProcessBlock_ID;
 int master_PID,scheduler_PID,mmu_PID;
 int MQ1, MQ2, MQ3;
 
+void clean_and_exit(int i);
+void createFreeFrameList();
+void createPageTable();
+void createMessageQueues();
+void createProcessBlocks();
+void concat(char *a,int b);
+void createProcesses();
+void done(int signo);
+
+
+int main(int argc, char const *argv[])
+{
+	srand(time(NULL));
+	signal(SIGUSR1,done);
+	signal(SIGINT,clean_and_exit);
+	if(argc < 4)
+	{
+		printf("Error: 3 arguments needed: k, m, f\n");		
+		clean_and_exit(1);
+	}
+
+	k = atoi(argv[1]);		
+	m = atoi(argv[2]);		
+	f = atoi(argv[3]);		
+	
+	master_PID = getpid();
+
+	if(k<= 0||m<= 0||f<=0||f<k)
+	{		
+		printf("Input is invalid\n");
+		clean_and_exit(1);
+	}
+
+	createPageTable();				
+	createFreeFrameList();
+	createProcessBlocks();
+	createMessageQueues();
+
+	scheduler_PID=fork();
+	if(scheduler_PID==0)
+			{
+				char M1[20],M2[20],N[20],PID[20];
+				sprintf(M1,"%d",MQ1);
+				sprintf(M2,"%d",MQ2);
+				sprintf(N,"%d",k);
+				sprintf(PID,"%d",master_PID);
+				execlp("./scheduler","./scheduler",M1,M2,N,PID,(char *)(NULL));		
+				exit(0);
+			}
+
+	mmu_PID=fork();
+	if(mmu_PID==0)
+	{
+		char buf1[20],buf2[20],buf3[20],buf4[20],buf5[20],buf6[20],buf7[20],buf8[20];
+		sprintf(buf1,"%d",MQ2);
+		sprintf(buf2,"%d",MQ3);
+		sprintf(buf3,"%d",SM1);
+		sprintf(buf4,"%d",SM2);
+		sprintf(buf5,"%d",ProcessBlock_ID);
+		sprintf(buf6,"%d",m);
+		sprintf(buf7,"%d",k);
+		sprintf(buf8,"%d",s);
+		execlp("xterm","xterm","-e","./mmu",buf1,buf2,buf3,buf4,buf5,buf6,buf7,buf8,(char *)(NULL));		//create MMU
+		exit(0);
+	}
+
+	createProcesses();
+	
+	pause(); 
+	clean_and_exit(0);
+	return 0;
+}
+
 void clean_and_exit(int i)
 	{
 		//remove the shared memory segments and message queues
@@ -313,65 +386,3 @@ void done(int signo)
 		}
 }
 
-int main(int argc, char const *argv[])
-{
-	srand(time(NULL));
-	signal(SIGUSR1,done);
-	signal(SIGINT,clean_and_exit);
-	if(argc < 4)
-	{
-		printf("Error: 3 arguments needed: k, m, f\n");		
-		clean_and_exit(1);
-	}
-
-	k = atoi(argv[1]);		
-	m = atoi(argv[2]);		
-	f = atoi(argv[3]);		
-	
-	master_PID = getpid();
-
-	if(k<= 0||m<= 0||f<=0||f<k)
-	{		
-		printf("Input is invalid\n");
-		clean_and_exit(1);
-	}
-
-	createPageTable();				
-	createFreeFrameList();
-	createProcessBlocks();
-	createMessageQueues();
-
-	scheduler_PID=fork();
-	if(scheduler_PID==0)
-			{
-				char M1[20],M2[20],N[20],PID[20];
-				sprintf(M1,"%d",MQ1);
-				sprintf(M2,"%d",MQ2);
-				sprintf(N,"%d",k);
-				sprintf(PID,"%d",master_PID);
-				execlp("./scheduler","./scheduler",M1,M2,N,PID,(char *)(NULL));		
-				exit(0);
-			}
-
-	mmu_PID=fork();
-	if(mmu_PID==0)
-	{
-		char buf1[20],buf2[20],buf3[20],buf4[20],buf5[20],buf6[20],buf7[20],buf8[20];
-		sprintf(buf1,"%d",MQ2);
-		sprintf(buf2,"%d",MQ3);
-		sprintf(buf3,"%d",SM1);
-		sprintf(buf4,"%d",SM2);
-		sprintf(buf5,"%d",ProcessBlock_ID);
-		sprintf(buf6,"%d",m);
-		sprintf(buf7,"%d",k);
-		sprintf(buf8,"%d",s);
-		execlp("xterm","xterm","-e","./mmu",buf1,buf2,buf3,buf4,buf5,buf6,buf7,buf8,(char *)(NULL));		//create MMU
-		exit(0);
-	}
-
-	createProcesses();
-	
-	pause(); 
-	clean_and_exit(0);
-	return 0;
-}
