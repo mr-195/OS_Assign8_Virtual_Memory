@@ -305,7 +305,7 @@ void ServiceMessageRequest() // Service message requests
 
 int main(int argc, char const *argv[]) // Main Function
 {
-	logfile = open("report.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
+	logfile = open("result.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
 	write(logfile, "MMU Logs\n", 10);
 	signal(SIGUSR2, done); 
 	signal(SIGUSR2, done); 
