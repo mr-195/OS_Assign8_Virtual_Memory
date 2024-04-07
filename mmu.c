@@ -3,34 +3,35 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdbool.h>
+#include <fcntl.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <limits.h>
 #include <sys/shm.h>
-#include <stdbool.h>
-#include <fcntl.h>
-#include <string.h>
 
-#define FROM_PROCESS 10			  // To send a msg to process
-#define TO_PROCESS 20			  // To recv a msg from process
-#define INVALID_PAGE_REFERENCE -2 // Page reference not valid
+
+#define FROM_PROCESS 10			  
+#define TO_PROCESS 20			 
+#define INVALID_PAGE_REFERENCE -2 
 #define PAGE_FAULT -1
 #define PROCESS_OVER -9
-#define PAGE_FAULT_HANDLED 1 // Type 1 msg
-#define TERMINATED 2		 // Type 2 msg
+#define PAGE_FAULT_HANDLED 1 
+#define TERMINATED 2		 
 
-int timestamp = 0;		  // Global timestamp
-int fault_freq[10000];	  // Frequency of page faults
-int fault_freq_index = 0; // Index for the frequency of page faults
-int outfile;
+int timestamp = 0;		  
+int fault_frequency[10000];	  
+int fault_frequency_index = 0; 
+int logfile;
 
 typedef struct
 { // Page Table Entry has the Frame number, valid/invalid and time of use (timestamp)
 	int frame;
 	bool valid;
 	int time;
-} PTentry;
+} PageTableEntry;
 
 typedef struct
 { // To enter necessary information for a process: The id, number of pages, allocated number of frames and used number of frames
@@ -54,108 +55,211 @@ typedef struct
 // 	bool valid;
 // }TLB;
 
-// Message Queue Structures
+// Message Queues
 
-struct MQ3_recvbuf
+struct MQ2_buffer
+{ // To send msg to scheduler via MQ2
+	long mtype;
+	char mbuf[1];
+};
+
+struct MQ3_recv_buffer
 { // To receive id and pageno from the process via MQ3
 	long mtype;
 	int id;
 	int pageno;
 };
 
-struct MQ3_sendbuf
+struct MQ3_send_buffer
 { // To send frameno to process via MQ3
 	long mtype;
 	int frameno;
 };
 
-struct MQ2buf
-{ // To send msg to scheduler via MQ2
-	long mtype;
-	char mbuf[1];
-};
+int SM1, SM2; // ids for various queues and shared memories
+int MQ2, MQ3;
+int ProcessBlock_ID;
 
-int PTid, FFLid; // ids for various queues and shared memories
-int MQ2id, MQ3id;
-int PCBid;
-
-process *PCB; // Structures
-PTentry *PT;
-FFL *freeFL;
+process *ProcessBlock; // Structures
+PageTableEntry *PageTable;
+FFL *FreeFrameList;
 // vector<TLB> tlb;					//TLB
 
 int m, k, s;
 
-void sendFrameNo(int id, int frame) // send frame number to process specified by id
+void done(int signo) // Signal Handler for SIGUSR1
 {
-	struct MQ3_sendbuf msg_to_process;
-	int length;
-
-	msg_to_process.mtype = TO_PROCESS + id; // msg to process
-	msg_to_process.frameno = frame;
-	length = sizeof(struct MQ3_sendbuf) - sizeof(long);
-
-	if (msgsnd(MQ3id, &msg_to_process, length, 0) == -1) // send frame number
+	int i;
+	if (signo == SIGUSR2)
 	{
-		perror("Error in sending message");
-		exit(1);
+		printf("Frequency of Page Faults for Each Process:\n");
+		write(logfile, "Frequency of Page Faults for Each Process:\n", 43);
+		printf("PID\tFrequency\n");
+		write(logfile, "PID\tFrequency\n", 14);
+		for (i = 0; i < k; i++)
+		{			
+			printf("%d\t%d\n", i, fault_frequency[i]);
+			char buf[100];
+			memset(buf, 0, sizeof(buf));
+			sprintf(buf, "%d\t%d\n", i, fault_frequency[i]);
+			write(logfile, buf, strlen(buf));
+		}
+
+		shmdt(ProcessBlock); // Detach various shared memory segments
+		shmdt(PageTable);
+		shmdt(FreeFrameList);
+		close(logfile); // close the file
+		exit(0);
 	}
 }
 
-void sendMsgToScheduler(int type) // send type1/type2 msg to scheduler
-{
-	struct MQ2buf msg_to_scheduler;
-	int length;
-
-	msg_to_scheduler.mtype = type;
-	length = sizeof(struct MQ2buf) - sizeof(long);
-
-	if (msgsnd(MQ2id, &msg_to_scheduler, length, 0) == -1) // send the msg
-	{
-		perror("Error in sending message");
-		exit(1);
-	}
-}
-
-int handlePageFault(int id, int pageno) // handle the page faults
+int HandlePageFault(int id, int pageno) // handle the page faults
 {
 	int i, frameno;
-	if (freeFL->size == 0 || PCB[id].usecount > PCB[id].allocount) // if there is no free frame or if the page has all its allocated number of frames used
+	if (FreeFrameList->size == 0 || ProcessBlock[id].usecount > ProcessBlock[id].allocount) // if there is no free frame or if the page has all its allocated number of frames used
 	{
 		int min = INT_MAX, mini = -1; // find the frame with the minimum timestamp, specifying the LRU policy
-		for (i = 0; i < PCB[id].m; i++)
+		for (i = 0; i < ProcessBlock[id].m; i++)
 		{
-			if (PT[id * m + i].valid == true)
+			if (PageTable[id * m + i].valid == true)
 			{
-				if (PT[id * m + i].time < min)
+				if (PageTable[id * m + i].time < min)
 				{
-					min = PT[id * m + i].time; // minimum timestamp is found
+					min = PageTable[id * m + i].time; // minimum timestamp is found
 					mini = i;
 				}
 			}
 		}
-		PT[id * m + mini].valid = false;   // that page table entry is made invalid
-		frameno = PT[id * m + mini].frame; // corresponding frame is returned
+		PageTable[id * m + mini].valid = false;   // that page table entry is made invalid
+		frameno = PageTable[id * m + mini].frame; // corresponding frame is returned
 	}
-
 	else
 	{
-		frameno = freeFL->ffl[freeFL->size - 1]; // otherwise get a free frame and allot it to the corresponding process
-		freeFL->size -= 1;
-		PCB[id].usecount++;
+		frameno = FreeFrameList->ffl[FreeFrameList->size - 1]; // otherwise get a free frame and allot it to the corresponding process
+		FreeFrameList->size -= 1;
+		ProcessBlock[id].usecount++;
 	}
 	return frameno;
 }
 
-void freeFrames(int id) // When a process is over/terminated, free all the frames allotted to it
+void SendFrameNumber(int id, int frame) // send frame number to process specified by id
+{
+	struct MQ3_send_buffer message_to_process;
+	int length;
+
+	message_to_process.mtype = TO_PROCESS + id; // message to process
+	message_to_process.frameno = frame;
+	length = sizeof(struct MQ3_send_buffer) - sizeof(long);
+
+	if (msgsnd(MQ3, &message_to_process, length, 0) == -1) // send frame number
+	{
+		perror("Error in sending message");
+		exit(1);
+	}
+}
+
+void SendMessageToScheduler(int type) // send type1/type2 message to scheduler
+{
+	struct MQ2_buffer message_to_scheduler;
+	int length;
+
+	message_to_scheduler.mtype = type;
+	length = sizeof(struct MQ2_buffer) - sizeof(long);
+
+	if (msgsnd(MQ2, &message_to_scheduler, length, 0) == -1) 
+	{
+		perror("Error in sending message");
+		exit(1);
+	}
+}
+
+void FreeFrames(int id) // When a process is over/terminated, free all the frames allotted to it
 {
 	int i = 0;
-	for (i = 0; i < PCB[i].m; i++)
+	for (i = 0; i < ProcessBlock[i].m; i++)
 	{
-		if (PT[id * m + i].valid == true)
+		if (PageTable[id * m + i].valid == true)
 		{
-			freeFL->ffl[freeFL->size] = PT[id * m + i].frame; // add the frame to FFL
-			freeFL->size += 1;								  // increase the size
+			FreeFrameList->ffl[FreeFrameList->size] = PageTable[id * m + i].frame; // add the frame to FreeFramesList
+			FreeFrameList->size += 1;								  // increment size
+		}
+	}
+}
+
+void ServiceMessageRequest() // Service message requests
+{
+	int id, pageno, length, frameno, i, found;
+	int mintime, mini;
+	struct MQ3_recv_buffer message_from_process;
+	struct MQ3_send_buffer message_to_process;
+	length = sizeof(struct MQ3_recv_buffer) - sizeof(long);
+	if (msgrcv(MQ3, &message_from_process, length, FROM_PROCESS, 0) == -1) // Receive a message from the process
+	{
+		perror("Error in receiving message");
+		exit(1);
+	}
+	id = message_from_process.id;
+	pageno = message_from_process.pageno; // Retrieve the process id and page number requested
+
+	if (pageno == PROCESS_OVER) // if -9 is received, free frames and send type 2 message to scheduler
+	{
+		FreeFrames(id);
+		SendMessageToScheduler(TERMINATED);
+		return;
+	}
+
+	timestamp++; // Increase the timestamp
+	
+	printf("Page reference: (%d, %d, %d)\n", timestamp, id, pageno);
+	char buf[1000];
+	memset(buf, 0, sizeof(buf));
+	sprintf(buf, "Page reference: (%d, %d, %d)\n", timestamp, id, pageno);	
+	write(logfile, buf, strlen(buf));
+	memset(buf, 0, sizeof(buf));
+
+	if(pageno > ProcessBlock[id].m || pageno < 0) // If we refer to an invalid page number
+	{		
+		printf("Invalid Page Reference: (%d, %d)\n", id, pageno);		
+		sprintf(buf, "Invalid Page Reference: (%d, %d)\n", id, pageno);
+		write(logfile, buf, strlen(buf));
+		SendFrameNumber(id, INVALID_PAGE_REFERENCE); // Send invalid reference to process
+		FreeFrames(id); // Free frames and terminate the process
+		SendMessageToScheduler(TERMINATED);
+	}
+	else
+	{
+		// for(i=0;i<s;i++)			//Go through TLB in SET ASSOCIATIVE manner (here assume it is shown sequentially)
+		// {
+		// 	if(tlb[i].valid==true&&tlb[i].pid==id&&tlb[i].pageno==pageno)
+		// 	{
+		// 		tlb[i].time=timestamp;			//if found in TLB
+		// 		cout<<"Found in TLB\n";
+		// 		SendFrameNumber(id,tlb[i].frameno);
+		// 		return;
+		// 	}
+		// }
+
+		if (PageTable[id * m + pageno].valid == true) // if found in page table but not in TLB
+		{
+			frameno = PageTable[id * m + pageno].frame;
+
+			// updateTLB(id,pageno,frameno);		//update TLB and return frame number
+			SendFrameNumber(id, frameno);
+			PageTable[id * m + pageno].time = timestamp;
+		}
+		else
+		{			
+			printf("Page Fault: (%d, %d)\n", id, pageno);			
+			sprintf(buf, "Page Fault: (%d, %d)\n", id, pageno);
+			write(logfile, buf, strlen(buf));
+			fault_frequency[id] += 1;
+			SendFrameNumber(id, PAGE_FAULT); // otherwise we get a page fault, we handle the page fault, update TLB and PageTable
+			frameno = HandlePageFault(id, pageno);
+			// updateTLB(id,pageno,frameno);
+			PageTable[id * m + pageno].valid = true;
+			PageTable[id * m + pageno].time = timestamp;
+			PageTable[id * m + pageno].frame = frameno;
+			SendMessageToScheduler(PAGE_FAULT_HANDLED); // tell scheduler that page fault is handled
 		}
 	}
 }
@@ -198,158 +302,41 @@ void freeFrames(int id) // When a process is over/terminated, free all the frame
 // 	}
 
 // }
-void serviceMessageRequest() // Service message requests
-{
-	int id, pageno, length, frameno, i, found;
-	int mintime, mini;
-	struct MQ3_recvbuf msg_from_process;
-	struct MQ3_sendbuf msg_to_process;
-	length = sizeof(struct MQ3_recvbuf) - sizeof(long);
-	if (msgrcv(MQ3id, &msg_from_process, length, FROM_PROCESS, 0) == -1) // Receive a msg from the process
-	{
-		perror("Error in receiving message");
-		exit(1);
-	}
-	id = msg_from_process.id;
-	pageno = msg_from_process.pageno; // Retrieve the process id and page number requested
-
-	if (pageno == PROCESS_OVER) // if -9 is received, free frames and send type 2 msg to scheduler
-	{
-		freeFrames(id);
-		sendMsgToScheduler(TERMINATED);
-		return;
-	}
-
-	timestamp++; // Increase the timestamp
-	// printf("Page reference: ("<<timestamp<<", "<<id<<", "<<pageno<<")\n";
-	printf("Page reference: (%d, %d, %d)\n", timestamp, id, pageno);
-	char buf[1000];
-	memset(buf, 0, sizeof(buf));
-	sprintf(buf, "Page reference: (%d, %d, %d)\n", timestamp, id, pageno);
-	// fprintf(outfile,"Page reference: (%d, %d, %d)\n",timestamp,id,pageno);
-	write(outfile, buf, strlen(buf));
-	memset(buf, 0, sizeof(buf));
-	if (pageno > PCB[id].m || pageno < 0) // If we refer to an invalid page number
-	{
-		// cout<<"Invalid Page Reference: ("<<id<<", "<<pageno<<")\n";
-		printf("Invalid Page Reference: (%d, %d)\n", id, pageno);
-		// fprintf(outfile,"Invalid Page Reference: (%d, %d)\n",id,pageno);
-		// sprintf()
-		sprintf(buf, "Invalid Page Reference: (%d, %d)\n", id, pageno);
-		write(outfile, buf, strlen(buf));
-		sendFrameNo(id, INVALID_PAGE_REFERENCE); // Send invalid reference to process
-
-		freeFrames(id); // Free frames and terminate the process
-		sendMsgToScheduler(TERMINATED);
-	}
-
-	else // if a valid page numeber is used
-	{
-		// for(i=0;i<s;i++)			//Go through TLB in SET ASSOCIATIVE manner (here assume it is shown sequentially)
-		// {
-		// 	if(tlb[i].valid==true&&tlb[i].pid==id&&tlb[i].pageno==pageno)
-		// 	{
-		// 		tlb[i].time=timestamp;			//if found in TLB
-		// 		cout<<"Found in TLB\n";
-		// 		sendFrameNo(id,tlb[i].frameno);
-		// 		return;
-		// 	}
-		// }
-
-		if (PT[id * m + pageno].valid == true) // if found in page table but not in TLB
-		{
-			frameno = PT[id * m + pageno].frame;
-
-			// updateTLB(id,pageno,frameno);		//update TLB and return frame number
-			sendFrameNo(id, frameno);
-			PT[id * m + pageno].time = timestamp;
-		}
-		else
-		{
-			// cout<<"Page Fault: ("<<id<<", "<<pageno<<")\n";
-			printf("Page Fault: (%d, %d)\n", id, pageno);
-			// fprintf(outfile, "Page Fault: (%d, %d)\n", id, pageno);
-			sprintf(buf, "Page Fault: (%d, %d)\n", id, pageno);
-			write(outfile, buf, strlen(buf));
-			fault_freq[id] += 1;
-			sendFrameNo(id, PAGE_FAULT); // otherwise we get a page fault, we handle the page fault, update TLB and PT
-			frameno = handlePageFault(id, pageno);
-			// updateTLB(id,pageno,frameno);
-			PT[id * m + pageno].valid = true;
-			PT[id * m + pageno].time = timestamp;
-			PT[id * m + pageno].frame = frameno;
-			sendMsgToScheduler(PAGE_FAULT_HANDLED); // tell scheduler that page fault is handled
-		}
-	}
-}
-
-void complete(int signo) // Signal Handler for SIGUSR1
-{
-	int i;
-	if (signo == SIGUSR2)
-	{
-
-		printf("Frequency of Page Faults for Each Process:\n");
-		write(outfile, "Frequency of Page Faults for Each Process:\n", 43);
-		printf("PID\tFrequency\n");
-		write(outfile, "PID\tFrequency\n", 14);
-		for (i = 0; i < k; i++)
-		{
-			// cout<<i<<"\t"<<fault_freq[i]<<endl;
-			printf("%d\t%d\n", i, fault_freq[i]);
-			char buf[100];
-			memset(buf, 0, sizeof(buf));
-			sprintf(buf, "%d\t%d\n", i, fault_freq[i]);
-			write(outfile, buf, strlen(buf));
-		}
-
-		shmdt(PCB); // Detach various shared memory segments
-		shmdt(PT);
-		shmdt(freeFL);
-		close(outfile); // close the file
-		exit(0);
-	}
-}
 
 int main(int argc, char const *argv[]) // Main Function
 {
-	// write()
-	// outfile=fopen("a.txt","w");
-	outfile = open("a.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open the file to write the output
-	write(outfile, "MMU Logs\n", 10);
-	signal(SIGUSR2, complete); // Install Signal Handler to get the signals
-	signal(SIGUSR2, complete); // Install Signal Handler to get the signals
-	sleep(1);				   // Just to show the context switch for better visualisation, otherwise the page access gets completed within 250 ms
+	logfile = open("report.txt", O_WRONLY | O_CREAT | O_TRUNC, 0666); // Open file to stroe output
+	write(logfile, "MMU Logs\n", 10);
+	signal(SIGUSR2, done); 
+	signal(SIGUSR2, done); 
+	sleep(1);				   // Induced to show the context switch for better visualisation, otherwise the page access gets completed within 250 ms
 	if (argc < 9)
 	{
 		perror("Invalid Number of Arguments\n");
 		exit(1);
 	}
 
-	MQ2id = atoi(argv[1]); // Get various ids and other parameters
-	MQ3id = atoi(argv[2]);
-	PTid = atoi(argv[3]);
-	FFLid = atoi(argv[4]);
-	PCBid = atoi(argv[5]);
+	MQ2 = atoi(argv[1]); // Access Arguments
+	MQ3 = atoi(argv[2]);
+	SM1 = atoi(argv[3]);
+	SM2 = atoi(argv[4]);
+	ProcessBlock_ID = atoi(argv[5]);
 	m = atoi(argv[6]);
 	k = atoi(argv[7]);
 	s = atoi(argv[8]);
 
-	int i;
-
-	// tlb.resize(s);								//Make a TLB of size s with all initial elements as false
-	// for(i=0;i<s;i++) tlb[i].valid=false;
+	int i;	
 
 	for (i = 0; i < k; i++)
-		fault_freq[i] = 0; // Page faults for all processes initially 0
+		fault_frequency[i] = 0; // Page faults for all processes initially 0
 
-	PCB = (process *)(shmat(PCBid, NULL, 0)); // Attach the various data structures to the shared memory via the id
-	PT = (PTentry *)(shmat(PTid, NULL, 0));
-	freeFL = (FFL *)(shmat(FFLid, NULL, 0));
+	ProcessBlock = (process *)(shmat(ProcessBlock_ID, NULL, 0)); // Attach the various data structures to the shared memory via the id
+	PageTable = (PageTableEntry *)(shmat(SM1, NULL, 0));
+	FreeFrameList = (FFL *)(shmat(SM2, NULL, 0));
 
 	while (1)
 	{
-		serviceMessageRequest(); // Service the various requests received
+		ServiceMessageRequest(); // Service the various requests received
 	}
 	return 0;
 }

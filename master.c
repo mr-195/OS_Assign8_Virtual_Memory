@@ -1,22 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <time.h>
+#include <stdbool.h>
 #include <signal.h>
 #include <sys/msg.h>
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <sys/shm.h>
-#include <string.h>
-#include <time.h>
-#include <stdbool.h>
-// using namespace std;
 
 typedef struct 
 {
 	int frame;
 	bool valid;
 	int time;	//time of last access of the page no
-}PTentry;
+}PageTableEntry;
 
 typedef struct {
 	int pid;
@@ -34,58 +33,58 @@ typedef struct
 int k,m,f,s;
 int key;
 
-int PTid, FFLid;
-int MQ1id, MQ2id, MQ3id;
-int PCBid;
-int master_pid,scheduler_pid,mmu_pid;
+int SM1, SM2;
+int ProcessBlock_ID;
+int master_PID,scheduler_PID,mmu_PID;
+int MQ1, MQ2, MQ3;
 
-void clear_and_exit(int i)
+void clean_and_exit(int i)
 	{
 		//remove the shared memory segments and message queues
 
-		if(shmctl(PTid,IPC_RMID,NULL)==-1)
+		if(shmctl(SM1,IPC_RMID,NULL)==-1)
 			{
 				perror("PT Shared Memory Error");			//Throw errors in case the destroy fails
 			}
-		if(shmctl(FFLid,IPC_RMID,NULL)==-1)
+		if(shmctl(SM2,IPC_RMID,NULL)==-1)
 			{
 				perror("FFL Shared Memory Error");
 			}
-		if(msgctl(MQ1id,IPC_RMID,NULL)==-1)
+		if(msgctl(MQ1,IPC_RMID,NULL)==-1)
 			{
 				perror("MQ1 Error");
 			}
-		if(msgctl(MQ2id,IPC_RMID,NULL)==-1)
+		if(msgctl(MQ2,IPC_RMID,NULL)==-1)
 			{
 				perror("MQ2 Error");
 			}
-		if(msgctl(MQ3id,IPC_RMID,NULL)==-1)
+		if(msgctl(MQ3,IPC_RMID,NULL)==-1)
 			{
 				perror("MQ3 Error");
 			}
 		exit(i);
 	}
 
-void createFFL()
+void createFreeFrameList()
 {
 	//create free frame list
 	int i;
 	int *a;
 	FFL *ptr;
 	key=rand();
-	FFLid=shmget(key,sizeof(FFL)+f*sizeof(int),0666|IPC_CREAT|IPC_EXCL);	//create FFL
-	if(FFLid==-1)
+	SM2=shmget(key,sizeof(FFL)+f*sizeof(int),0666|IPC_CREAT|IPC_EXCL);	//create FFL
+	if(SM2==-1)
 	{	
 		perror("FFL Shared Memory Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
-	ptr=(FFL*)(shmat(FFLid, NULL, 0));
+	ptr=(FFL*)(shmat(SM2, NULL, 0));
 	a=(int *)ptr;
 	if(*a==-1)
 	{
 		perror("FFL Shared Memory Attach Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 	for(i=0;i<f;i++)
@@ -98,28 +97,28 @@ void createFFL()
 	if(shmdt(ptr)==-1)
 	{
 		perror("FFL Shared Memory Detach Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 }
 
-void createPT()
+void createPageTable()
 {
 	//create page tables
 	int i;
 	key=rand();
-	PTid=shmget(key,m*k*sizeof(PTentry),0666|IPC_CREAT|IPC_EXCL);
-	if(PTid==-1)
+	SM1=shmget(key,m*k*sizeof(PageTableEntry),0666|IPC_CREAT|IPC_EXCL);
+	if(SM1==-1)
 	{	
 		perror("PT Shared Memory Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
-	PTentry *pt=(PTentry *)(shmat(PTid,NULL,0));
+	PageTableEntry *pt=(PageTableEntry *)(shmat(SM1,NULL,0));
 	int *a=(int *)pt;
 	if(*a==-1)
 	{
 		perror("PT Shared Memory Attach Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 	//initialize the frame no to -1 and valid to false
 	for(i=0;i<k*m;i++)
@@ -131,35 +130,35 @@ void createPT()
 	if(shmdt(pt)==-1)
 	{
 		perror("PT Shared Memory Detach Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 }
 
-void createMQs()
+void createMessageQueues()
 {
 	//create the 3 message queues
 	key=rand();
-	MQ1id=msgget(key,0666|IPC_CREAT|IPC_EXCL);			//create message queues using MQ1id,MQ2id,MQ3id
-	if(MQ1id==-1)
+	MQ1=msgget(key,0666|IPC_CREAT|IPC_EXCL);			//create message queues using MQ1,MQ2,MQ3
+	if(MQ1==-1)
 	{
 		perror("MQ1 Create Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 	key=rand();
-	MQ2id=msgget(key,0666|IPC_CREAT|IPC_EXCL);
-	if(MQ2id==-1)
+	MQ2=msgget(key,0666|IPC_CREAT|IPC_EXCL);
+	if(MQ2==-1)
 	{
 		perror("MQ2 Create Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 	key=rand();
-	MQ3id=msgget(key,0666|IPC_CREAT|IPC_EXCL);
-	if(MQ3id==-1)
+	MQ3=msgget(key,0666|IPC_CREAT|IPC_EXCL);
+	if(MQ3==-1)
 	{
 		perror("MQ3 Create Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 }
 
@@ -168,19 +167,19 @@ void createProcessBlocks()
 	//create process control blocks to store the number of pages, number of frames allocated and used for each process
 	int i;
 	key=rand();
-	PCBid=shmget(key,sizeof(process)*k,0666|IPC_CREAT|IPC_EXCL);
-	if(PCBid==-1)
+	ProcessBlock_ID=shmget(key,sizeof(process)*k,0666|IPC_CREAT|IPC_EXCL);
+	if(ProcessBlock_ID==-1)
 	{	
 		perror("Process Block Create Error");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
-	process *ptr=(process*)(shmat(PCBid, NULL, 0));
+	process *ptr=(process*)(shmat(ProcessBlock_ID, NULL, 0));
 	int *a=(int *)ptr;
 	if(*a==-1)
 	{
 		perror("Shared Memory Attach Error: PCB");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 	int totalpages=0;	//total no. of pages for all the processes
@@ -219,7 +218,7 @@ void createProcessBlocks()
 	if(shmdt(ptr)==-1)
 	{
 		perror("Shared Memory Detach Error: PCB");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 }
@@ -234,13 +233,13 @@ void concat(char *a,int b)
 
 void createProcesses()
 {
-	process *ptr = (process*)(shmat(PCBid, NULL, 0));
+	process *ptr = (process*)(shmat(ProcessBlock_ID, NULL, 0));
 	
 	int *a=(int *)ptr;
 	if(*a==-1)
 	{
 		perror("Shared Memory Attach Error: PCB");
-		clear_and_exit(1);
+		clean_and_exit(1);
 	}
 
 	int i,j,seed;
@@ -268,8 +267,7 @@ void createProcesses()
 				if(rand()%2==0) srand(seed);
 				for(j=0;j<n;j++)
 				{
-					r=rand()%ptr[i].m+rand()%n;
-					// ref=ref+to_string(r)+"  ";
+					r=rand()%ptr[i].m+rand()%n;					
 					concat(ref,r);
 				}
 				generated+=n;
@@ -280,25 +278,22 @@ void createProcesses()
 				srand(seed);
 				for(j=0;j<rlen-generated;j++)
 				{
-					r=rand()%ptr[i].m+rand()%(n*2);
-					// ref=ref+to_string(r)+"  ";
+					r=rand()%ptr[i].m+rand()%(n*2);					
 					concat(ref,r);
 				}
 				generated=rlen;
 			}
 		}
-
-		// cout<<"Reference String: "<<ref<<endl;
+		
 		printf("Reference String: %s\n",ref);
 		if(fork()==0)
 		{
 			char PNo[20],M1[20],M3[20];
 			sprintf(PNo,"%d",i);
-			sprintf(M1,"%d",MQ1id);
-			sprintf(M3,"%d",MQ3id);
+			sprintf(M1,"%d",MQ1);
+			sprintf(M3,"%d",MQ3);
 			execlp("./process","./process",PNo,M1,M3,(char *)&ref[0],(char *)(NULL));		//call the process
 			exit(0);
-
 		}
 
 		usleep(250*1000);
@@ -306,69 +301,67 @@ void createProcesses()
 }
 
 
-void complete(int signo)
+void done(int signo)
 {
 	sleep(1);
 	if(signo==SIGUSR1)
 		{
-			kill(scheduler_pid,SIGTERM);	//send signal to scheduler to terminate
-			kill(mmu_pid,SIGUSR2);			//send signal to MMU to terminate
+			kill(scheduler_PID,SIGTERM);	//send signal to scheduler to terminate itself
+			kill(mmu_PID,SIGUSR2);			//send signal to MMU to terminate itselff
 			sleep(1);
-			clear_and_exit(0);
+			clean_and_exit(0);
 		}
 }
 
 int main(int argc, char const *argv[])
 {
 	srand(time(NULL));
-	signal(SIGUSR1,complete);
-	signal(SIGINT,clear_and_exit);
+	signal(SIGUSR1,done);
+	signal(SIGINT,clean_and_exit);
 	if(argc < 4)
 	{
-		printf("Error: 3 arguments needed: k, m, f, s\n");
-		// printf("")
-		clear_and_exit(1);
+		printf("Error: 3 arguments needed: k, m, f\n");		
+		clean_and_exit(1);
 	}
 
-	k = atoi(argv[1]);		// No. of processes
-	m = atoi(argv[2]);		// Max size of page table
-	f = atoi(argv[3]);		// Total number of frames in main memory
-	// s = atoi(argv[4]);		// Size of TLB
-	master_pid = getpid();
+	k = atoi(argv[1]);		
+	m = atoi(argv[2]);		
+	f = atoi(argv[3]);		
+	
+	master_PID = getpid();
 
 	if(k<= 0||m<= 0||f<=0||f<k)
-	{
-		// cout<<"Input is invalid\n";
-		printf("Inut is invalid\n");
-		clear_and_exit(1);
+	{		
+		printf("Input is invalid\n");
+		clean_and_exit(1);
 	}
 
-	createPT();				//create the data structures required
-	createFFL();
+	createPageTable();				
+	createFreeFrameList();
 	createProcessBlocks();
-	createMQs();
+	createMessageQueues();
 
-	scheduler_pid=fork();
-	if(scheduler_pid==0)
+	scheduler_PID=fork();
+	if(scheduler_PID==0)
 			{
 				char M1[20],M2[20],N[20],PID[20];
-				sprintf(M1,"%d",MQ1id);
-				sprintf(M2,"%d",MQ2id);
+				sprintf(M1,"%d",MQ1);
+				sprintf(M2,"%d",MQ2);
 				sprintf(N,"%d",k);
-				sprintf(PID,"%d",master_pid);
-				execlp("./scheduler","./scheduler",M1,M2,N,PID,(char *)(NULL));		//create scheduler
+				sprintf(PID,"%d",master_PID);
+				execlp("./scheduler","./scheduler",M1,M2,N,PID,(char *)(NULL));		
 				exit(0);
 			}
 
-	mmu_pid=fork();
-	if(mmu_pid==0)
+	mmu_PID=fork();
+	if(mmu_PID==0)
 	{
 		char buf1[20],buf2[20],buf3[20],buf4[20],buf5[20],buf6[20],buf7[20],buf8[20];
-		sprintf(buf1,"%d",MQ2id);
-		sprintf(buf2,"%d",MQ3id);
-		sprintf(buf3,"%d",PTid);
-		sprintf(buf4,"%d",FFLid);
-		sprintf(buf5,"%d",PCBid);
+		sprintf(buf1,"%d",MQ2);
+		sprintf(buf2,"%d",MQ3);
+		sprintf(buf3,"%d",SM1);
+		sprintf(buf4,"%d",SM2);
+		sprintf(buf5,"%d",ProcessBlock_ID);
 		sprintf(buf6,"%d",m);
 		sprintf(buf7,"%d",k);
 		sprintf(buf8,"%d",s);
@@ -378,8 +371,7 @@ int main(int argc, char const *argv[])
 
 	createProcesses();
 	
-	pause(); //wait till scheduler notifies completion of all processes
-
-	clear_and_exit(0);
+	pause(); 
+	clean_and_exit(0);
 	return 0;
 }
