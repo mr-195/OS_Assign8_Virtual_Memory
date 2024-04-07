@@ -323,9 +323,9 @@ int main(int argc, char const *argv[])
 	srand(time(NULL));
 	signal(SIGUSR1,complete);
 	signal(SIGINT,clear_and_exit);
-	if(argc < 5)
+	if(argc < 4)
 	{
-		printf("Error: 4 arguments needed: k, m, f, s\n");
+		printf("Error: 3 arguments needed: k, m, f, s\n");
 		// printf("")
 		clear_and_exit(1);
 	}
@@ -333,7 +333,7 @@ int main(int argc, char const *argv[])
 	k = atoi(argv[1]);		// No. of processes
 	m = atoi(argv[2]);		// Max size of page table
 	f = atoi(argv[3]);		// Total number of frames in main memory
-	s = atoi(argv[4]);		// Size of TLB
+	// s = atoi(argv[4]);		// Size of TLB
 	master_pid = getpid();
 
 	if(k<= 0||m<= 0||f<=0||f<k)
